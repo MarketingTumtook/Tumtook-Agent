@@ -3,7 +3,7 @@
  * Plugin Name: Tumtook Agents
  * Plugin URI: https://chatbotline.tumtook.com
  * Description: ดึงข้อมูลรายชื่อ Agents จาก Tumtook API มาแสดงผลผ่าน Shortcode [tumtook_agents]
- * Version: 1.0.4
+ * Version: 1.1.0
  * Author: Tumtook
  * Text Domain: tumtook-agents
  */
@@ -19,6 +19,13 @@ define('TUMTOOK_AGENTS_STALE_CACHE_KEY', TUMTOOK_AGENTS_CACHE_KEY . '_stale');
 define('TUMTOOK_AGENTS_CACHE_TTL', 30 * MINUTE_IN_SECONDS);
 define('TUMTOOK_AGENTS_STALE_CACHE_TTL', 12 * HOUR_IN_SECONDS);
 define('TUMTOOK_AGENTS_REQUEST_TIMEOUT', 5);
+define('TUMTOOK_AGENTS_VERSION', '1.1.0');
+define('TUMTOOK_AGENTS_REFRESH_INTERVAL', MINUTE_IN_SECONDS);
+define('TUMTOOK_AGENTS_CRON_HOOK', 'tumtook_agents_refresh_event');
+define('TUMTOOK_AGENTS_STATE_KEY', TUMTOOK_AGENTS_CACHE_KEY . '_state');
+define('TUMTOOK_AGENTS_LOCK_KEY', TUMTOOK_AGENTS_CACHE_KEY . '_lock');
+
+require_once __DIR__ . '/includes/cache.php';
 
 /**
  * Enqueue plugin styles.
@@ -30,7 +37,7 @@ function tumtook_agents_register_styles() {
         'tumtook-agents-style',
         TUMTOOK_AGENTS_PLUGIN_URL . 'style.css',
         array(),
-        '1.0.4'
+        TUMTOOK_AGENTS_VERSION
     );
 }
 add_action('wp_enqueue_scripts', 'tumtook_agents_register_styles');
@@ -46,17 +53,6 @@ function tumtook_agents_enqueue_styles() {
     }
 
     wp_enqueue_style('tumtook-agents-style');
-}
-
-/**
- * Purge cached pages from FlyingPress when available.
- *
- * @return void
- */
-function tumtook_agents_purge_page_cache() {
-    if (class_exists('FlyingPress\Purge')) {
-        \FlyingPress\Purge::purge_pages();
-    }
 }
 
 /**
@@ -80,20 +76,11 @@ function tumtook_agents_control_flyingpress_cache($is_cacheable) {
         return $is_cacheable;
     }
 
-    return has_shortcode($post->post_content, 'tumtook_agents') ? false : $is_cacheable;
+    return has_shortcode($post->post_content, 'tumtook_agents')
+        || has_shortcode((string) get_post_meta($post->ID, '_elementor_data', true), 'tumtook_agents')
+        ? false : $is_cacheable;
 }
 add_filter('flying_press_is_cacheable', 'tumtook_agents_control_flyingpress_cache');
-
-/**
- * Clear cached agents data and purge related FlyingPress page caches.
- *
- * @return void
- */
-function tumtook_agents_clear_cache() {
-    delete_transient(TUMTOOK_AGENTS_CACHE_KEY);
-    delete_transient(TUMTOOK_AGENTS_STALE_CACHE_KEY);
-    tumtook_agents_purge_page_cache();
-}
 
 /**
  * Get a normalized LINE ID for sorting agents.
@@ -174,6 +161,8 @@ add_action('admin_init', 'tumtook_agents_handle_admin_actions');
  */
 function tumtook_agents_render_admin_page() {
     $cache_cleared = isset($_GET['cache_cleared']) && $_GET['cache_cleared'] === '1';
+    $state = get_option(TUMTOOK_AGENTS_STATE_KEY, array());
+    $next_refresh = wp_next_scheduled(TUMTOOK_AGENTS_CRON_HOOK);
     ?>
     <div class="wrap">
         <h1>Tumtook Agents</h1>
@@ -184,6 +173,23 @@ function tumtook_agents_render_admin_page() {
             </div>
         <?php endif; ?>
 
+        <div class="card" style="max-width: 720px;">
+            <h2>การอัปเดตอัตโนมัติ</h2>
+            <p>ตรวจข้อมูล API เบื้องหลังทุก 60 วินาที และล้างแคชเฉพาะหน้าที่แสดง Agents เมื่อข้อมูลที่แสดงเปลี่ยน</p>
+            <p>อัปเดตสำเร็จล่าสุด:
+                <?php echo empty($state['last_success']) ? 'ยังไม่มี' : esc_html(wp_date('Y-m-d H:i:s', $state['last_success'])); ?>
+            </p>
+            <p>รอบตรวจถัดไป:
+                <?php echo $next_refresh ? esc_html(wp_date('Y-m-d H:i:s', $next_refresh)) : 'ยังไม่ได้ตั้งเวลา'; ?>
+            </p>
+            <?php if (!empty($state['last_error'])) : ?>
+                <p>การตรวจครั้งล่าสุดไม่สำเร็จ ระบบจะลองใหม่ในรอบถัดไปและใช้ข้อมูลล่าสุดที่ยังมีอยู่ชั่วคราว</p>
+            <?php endif; ?>
+            <?php if (!empty($state['purge_pending'])) : ?>
+                <p>กำลังรออัปเดตแคชหน้าเว็บในรอบตรวจที่สำเร็จถัดไป</p>
+            <?php endif; ?>
+            <p>เพื่อให้ตรวจได้ทุกนาทีแม้ไม่มีคนเข้าเว็บ ให้ตั้ง Cron ของเซิร์ฟเวอร์เรียก WordPress ทุกนาที โดย WP-Cron ตามปกติอาจทำงานช้ากว่าเวลาที่ตั้งไว้</p>
+        </div>
         <div class="card" style="max-width: 720px;">
             <h2>Cache Tools</h2>
             <p>ใช้ปุ่มนี้เพื่อล้าง cache ข้อมูล agents ที่ปลั๊กอินเก็บไว้ แล้วให้ request ถัดไปดึงข้อมูลใหม่จาก API</p>
@@ -200,7 +206,7 @@ function tumtook_agents_render_admin_page() {
 /**
  * Fetch agents data from remote API.
  *
- * @return array
+ * @return array|WP_Error An empty array is a successful result with no enabled agents.
  */
 function tumtook_agents_request_data() {
     $response = wp_remote_get(
@@ -215,22 +221,35 @@ function tumtook_agents_request_data() {
     );
 
     if (is_wp_error($response)) {
-        return array();
+        return new WP_Error('tumtook_agents_network_error', 'Unable to reach the agents API.');
     }
 
-    $data = json_decode(wp_remote_retrieve_body($response), true);
+    $status = wp_remote_retrieve_response_code($response);
+    if ($status < 200 || $status >= 300) {
+        return new WP_Error('tumtook_agents_http_error', 'The agents API returned an unsuccessful response.');
+    }
 
+    // Decode objects as objects so that {} cannot be confused with a valid [].
+    $data = json_decode(wp_remote_retrieve_body($response));
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        return new WP_Error('tumtook_agents_invalid_json', 'The agents API returned invalid JSON.');
+    }
+
+    if (is_object($data) && property_exists($data, 'items')) {
+        $data = $data->items;
+    }
     if (!is_array($data)) {
-        return array();
+        return new WP_Error('tumtook_agents_invalid_data', 'The agents API did not return an agent list.');
     }
 
-    if (isset($data['items']) && is_array($data['items'])) {
-        $data = $data['items'];
+    foreach ($data as &$agent) {
+        if (!is_object($agent) || !isset($agent->name) || !is_string($agent->name)
+            || !isset($agent->flexEnabled) || !is_bool($agent->flexEnabled)) {
+            return new WP_Error('tumtook_agents_invalid_data', 'The agents API returned an invalid agent.');
+        }
+        $agent = (array) $agent;
     }
-
-    if (!is_array($data)) {
-        return array();
-    }
+    unset($agent);
 
     $agents = array_values(
         array_filter(
@@ -258,29 +277,31 @@ function tumtook_agents_request_data() {
 }
 
 /**
- * Fetch agents data with caching.
+ * Serve the last snapshot without blocking visitors on routine API refreshes.
  *
- * @return array
+ * @return array|WP_Error
  */
 function tumtook_agents_fetch_data() {
     $cached = get_transient(TUMTOOK_AGENTS_CACHE_KEY);
 
-    if ($cached !== false) {
-        return is_array($cached) ? $cached : array();
-    }
-
-    $data = tumtook_agents_request_data();
-
-    if (!empty($data)) {
-        set_transient(TUMTOOK_AGENTS_CACHE_KEY, $data, TUMTOOK_AGENTS_CACHE_TTL);
-        set_transient(TUMTOOK_AGENTS_STALE_CACHE_KEY, $data, TUMTOOK_AGENTS_STALE_CACHE_TTL);
-
-        return $data;
+    if (is_array($cached)) {
+        return $cached;
     }
 
     $stale = get_transient(TUMTOOK_AGENTS_STALE_CACHE_KEY);
+    if (is_array($stale)) {
+        return $stale;
+    }
 
-    return is_array($stale) ? $stale : array();
+    // Only the first load without any snapshot needs to wait for the API.
+    // Rate-limit failures so an outage cannot trigger one API call per visitor.
+    $state = get_option(TUMTOOK_AGENTS_STATE_KEY, array());
+    if (!empty($state['last_attempt'])
+        && time() - $state['last_attempt'] < TUMTOOK_AGENTS_REFRESH_INTERVAL) {
+        return new WP_Error('tumtook_agents_retry_later', 'The agents data is temporarily unavailable.');
+    }
+
+    return tumtook_agents_refresh_data();
 }
 
 /**
@@ -394,12 +415,16 @@ function tumtook_agents_render_card($agent, $index) {
  * @return string
  */
 function tumtook_agents_shortcode() {
+    tumtook_agents_track_current_page();
     tumtook_agents_enqueue_styles();
 
     $agents = tumtook_agents_fetch_data();
 
-    if (empty($agents)) {
+    if (is_wp_error($agents)) {
         return '<p class="tumtook-agents-error">ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่อีกครั้ง</p>';
+    }
+    if (empty($agents)) {
+        return '<p class="tumtook-agents-empty">ขณะนี้ยังไม่มีทีมฝ่ายขายที่เปิดให้บริการ</p>';
     }
 
     ob_start();
@@ -427,6 +452,10 @@ add_shortcode('tumtook_agents', 'tumtook_agents_shortcode');
  * @return void
  */
 function tumtook_agents_deactivate() {
+    wp_clear_scheduled_hook(TUMTOOK_AGENTS_CRON_HOOK);
     tumtook_agents_clear_cache();
+    delete_option(TUMTOOK_AGENTS_LOCK_KEY);
+    delete_option(TUMTOOK_AGENTS_STATE_KEY);
+    delete_option('tumtook_agents_version');
 }
 register_deactivation_hook(__FILE__, 'tumtook_agents_deactivate');
