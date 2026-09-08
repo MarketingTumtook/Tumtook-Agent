@@ -1,0 +1,217 @@
+/* ===================================
+   Tumtook Agents Plugin Styles
+   =================================== */
+
+/* Wrapper */
+.tumtook-agents-wrapper {
+    max-width: 1200px;
+    margin: 2rem auto;
+    font-family: 'Prompt', 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Header */
+.tumtook-agents-header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+}
+
+.tumtook-agents-logo {
+    width: 32px;
+    height: 32px;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 0.4rem;
+}
+
+.tumtook-agents-title {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.75rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #e53935, #c62828);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0 0 0.5rem;
+    gap:10px;
+}
+
+.tumtook-agents-subtitle {
+    font-size: 1rem;
+    color: #888;
+    margin: 0;
+}
+
+/* Grid - 3 columns like reference */
+.tumtook-agents-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+}
+
+/* Card - vertical layout */
+.tumtook-agent-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    animation: tumtook-fadeInUp 0.5s ease both;
+    animation-delay: var(--delay, 0s);
+}
+
+.tumtook-agent-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 32px rgba(229, 57, 53, 0.15);
+}
+
+.tumtook-agent-card.tumtook-agent-offline {
+    /* no visual difference */
+}
+
+/* Photo area - large square with flip */
+.tumtook-agent-photo {
+    position: relative;
+    width: 100%;
+    padding-top: 100%; /* 1:1 aspect ratio */
+    perspective: 800px;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.tumtook-agent-photo:hover .tumtook-flip-front {
+    transform: rotateY(180deg);
+}
+
+.tumtook-agent-photo:hover .tumtook-flip-back {
+    transform: rotateY(0deg);
+}
+
+.tumtook-flip-front,
+.tumtook-flip-back {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    transition: transform 0.6s ease;
+}
+
+.tumtook-flip-front {
+    transform: rotateY(0deg);
+    z-index: 2;
+}
+
+.tumtook-flip-front img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.tumtook-flip-back {
+    transform: rotateY(-180deg);
+    z-index: 1;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5%;
+}
+
+.tumtook-flip-back img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+/* Placeholder when no image */
+.tumtook-agent-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #e53935, #c62828);
+    color: #fff;
+    font-size: 2.5rem;
+    font-weight: 700;
+}
+
+/* Info below photo */
+.tumtook-agent-info {
+    text-align: center;
+    padding: 1rem 0.75rem 1.25rem;
+    width: 100%;
+}
+
+.tumtook-agent-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #222;
+    margin: 0 0 0.25rem;
+}
+
+.tumtook-agent-lineid {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #e53935;
+    margin: 0;
+}
+
+/* Error */
+.tumtook-agents-error {
+    text-align: center;
+    color: #e53935;
+    padding: 2rem;
+    background: #fce4ec;
+    border-radius: 12px;
+    font-size: 0.95rem;
+}
+
+/* Animations */
+@keyframes tumtook-fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(16px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+    .tumtook-agents-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+    }
+}
+
+@media (max-width: 540px) {
+    .tumtook-agents-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+    }
+
+    .tumtook-agents-title {
+        font-size: 1.3rem;
+    }
+
+    .tumtook-agent-name {
+        font-size: 0.85rem;
+    }
+
+    .tumtook-agent-lineid {
+        font-size: 0.75rem;
+    }
+
+    .tumtook-agent-info {
+        padding: 0.6rem 0.5rem 0.8rem;
+    }
+}
