@@ -278,6 +278,22 @@ body.page-id-74 #lineBtnWrap {
 }
 
 @media (max-width: 540px) {
+    /* The Elementor hero must follow the image aspect ratio on small screens. */
+    body.page-id-74 .elementor-element-eccbb59,
+    body.page-id-74 .elementor-element-eccbb59 .elementor-container,
+    body.page-id-74 .elementor-element-eccbb59 .elementor-widget-wrap,
+    body.page-id-74 .elementor-element-775e04d,
+    body.page-id-74 .elementor-element-775e04d .elementor-widget-container {
+        min-height: 0 !important;
+        height: auto !important;
+    }
+
+    body.page-id-74 .elementor-element-775e04d img {
+        display: block;
+        width: 100%;
+        height: auto !important;
+    }
+
     .tumtook-agents-wrapper {
         margin: 1rem auto;
     }
