@@ -3,7 +3,7 @@
  * Plugin Name: Tumtook Agents
  * Plugin URI: https://chatbotline.tumtook.com
  * Description: ดึงข้อมูลรายชื่อ Agents จาก Tumtook API มาแสดงผลผ่าน Shortcode [tumtook_agents]
- * Version: 1.2.1
+ * Version: 1.2.2
  * Author: Tumtook
  * Text Domain: tumtook-agents
  */
@@ -19,7 +19,7 @@ define('TUMTOOK_AGENTS_STALE_CACHE_KEY', TUMTOOK_AGENTS_CACHE_KEY . '_stale');
 define('TUMTOOK_AGENTS_CACHE_TTL', 30 * MINUTE_IN_SECONDS);
 define('TUMTOOK_AGENTS_STALE_CACHE_TTL', 12 * HOUR_IN_SECONDS);
 define('TUMTOOK_AGENTS_REQUEST_TIMEOUT', 5);
-define('TUMTOOK_AGENTS_VERSION', '1.2.1');
+define('TUMTOOK_AGENTS_VERSION', '1.2.2');
 define('TUMTOOK_AGENTS_REFRESH_INTERVAL', MINUTE_IN_SECONDS);
 define('TUMTOOK_AGENTS_CRON_HOOK', 'tumtook_agents_refresh_event');
 define('TUMTOOK_AGENTS_STATE_KEY', TUMTOOK_AGENTS_CACHE_KEY . '_state');
@@ -54,63 +54,6 @@ function tumtook_agents_enqueue_styles() {
 
     wp_enqueue_style('tumtook-agents-style');
 }
-
-/**
- * Make the fixed contact details on the Contact page actionable without
- * changing the Elementor markup that owns those details.
- *
- * @return void
- */
-function tumtook_agents_render_contact_detail_links() {
-    if (!is_page(74)) {
-        return;
-    }
-    ?>
-    <script id="tumtook-agents-contact-detail-links">
-    (() => {
-        const linkText = (selector, pattern, href) => {
-            document.querySelectorAll(selector).forEach((root) => {
-                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-                const nodes = [];
-
-                while (walker.nextNode()) {
-                    nodes.push(walker.currentNode);
-                }
-
-                nodes.forEach((node) => {
-                    if (node.parentElement && node.parentElement.closest('a')) {
-                        return;
-                    }
-
-                    const match = node.nodeValue.match(pattern);
-                    if (!match) {
-                        return;
-                    }
-
-                    const link = document.createElement('a');
-                    link.href = href(match[0]);
-                    link.textContent = match[0];
-
-                    const fragment = document.createDocumentFragment();
-                    fragment.append(
-                        document.createTextNode(node.nodeValue.slice(0, match.index)),
-                        link,
-                        document.createTextNode(node.nodeValue.slice(match.index + match[0].length))
-                    );
-                    node.replaceWith(fragment);
-                });
-            });
-        };
-
-        linkText('.elementor-element-0c5225b', /0899008888/, (value) => `tel:${value}`);
-        linkText('.elementor-element-0c5225b', /info@tumtook\.com/i, (value) => `mailto:${value}`);
-        linkText('.elementor-element-8217249', /0897472224/, (value) => `tel:${value}`);
-        linkText('.elementor-element-8217249', /account@tumtook\.com/i, (value) => `mailto:${value}`);
-    })();
-    </script>
-    <?php
-}
-add_action('wp_footer', 'tumtook_agents_render_contact_detail_links', 100);
 
 /**
  * Allow FlyingPress to cache shortcode pages by default.
