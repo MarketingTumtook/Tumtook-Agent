@@ -222,6 +222,12 @@ namespace {
     }
     function poll() { do_action(TUMTOOK_AGENTS_CRON_HOOK); }
     function rendered_contains($name) { return strpos(tumtook_agents_shortcode(), $name) !== false; }
+    function visit($url) {
+        if (!isset($GLOBALS['page_cache'][$url])) {
+            $GLOBALS['page_cache'][$url] = tumtook_agents_shortcode();
+        }
+        return $GLOBALS['page_cache'][$url];
+    }
 
     reset_state();
     do_action('init');
@@ -248,9 +254,17 @@ namespace {
     set_transient(TUMTOOK_AGENTS_STALE_CACHE_KEY, array(agent('AgentA'), agent('AgentB')), 43200);
     poll();
     verify($api_calls === 1 && count(\FlyingPress\Purge::$calls) === 1, 'The first scheduled poll refreshes legacy data despite a warm 30-minute cache.');
+    $rendered = tumtook_agents_shortcode();
+    verify(strpos($rendered, 'class="tumtook-agent-line-link"') !== false
+        && strpos($rendered, 'href="https://line.me/ti/p/@AgentA"') !== false,
+        'Rendered agent cards include a direct LINE chat link.');
+    verify(strpos($rendered, 'aria-label="แชต LINE กับ เซลล์AgentA"') !== false
+        && strpos($rendered, 'rel="noopener noreferrer"') !== false,
+        'LINE chat links have an accessible label and safe external-link attributes.');
     verify(\FlyingPress\Purge::$calls[0] === array(get_permalink(101), get_permalink(102)), 'Only direct and Elementor shortcode pages are discovered; private/draft/library/other tags are excluded.');
     verify($page_cache[get_permalink(104)] === 'Unrelated cached HTML', 'Unrelated FlyingPress HTML stays untouched.');
-    verify(strpos($page_cache[get_permalink(101)], 'AgentA') !== false && $api_calls === 1, 'Preload uses the new stored snapshot and does not fetch the API again.');
+    verify(strpos(visit(get_permalink(101)), 'AgentA') !== false && $api_calls === 1, 'The next visit rebuilds HTML using stored data without requesting the API.');
+    verify(\FlyingPress\Preload::$calls === array(), 'No additional FlyingPress preload is requested by the plugin.');
     $scans = $wpdb->scans;
     poll();
     verify($api_calls === 2 && count(\FlyingPress\Purge::$calls) === 1 && $wpdb->scans === $scans, 'Unchanged data does not scan pages, purge, or preload again.');
@@ -262,7 +276,7 @@ namespace {
     poll();
     verify(!rendered_contains('AgentA') && rendered_contains('AgentB'), 'Turning one agent off changes the actual shortcode output.');
     verify(in_array(get_permalink(103), end(\FlyingPress\Purge::$calls), true), 'A page rendered through a shared template is tracked for invalidation.');
-    verify(strpos($page_cache[get_permalink(101)], 'AgentA') === false, 'The rebuilt FlyingPress page no longer contains the disabled card.');
+    verify(strpos(visit(get_permalink(101)), 'AgentA') === false, 'The rebuilt FlyingPress page no longer contains the disabled card.');
     $calls = $api_calls;
     for ($i = 0; $i < 20; ++$i) { tumtook_agents_shortcode(); }
     verify($api_calls === $calls, 'Repeated visitors read the snapshot without adding API requests.');
@@ -315,13 +329,17 @@ namespace {
     api_items(array(agent('AgentA'), agent('AgentB')));
     poll();
     verify(count(\FlyingPress\Purge::$calls) === $purges + 1
-        && strpos($page_cache[get_permalink(101)], 'AgentA') !== false, 'Recovery after both snapshots expire rebuilds error HTML even for the same list.');
+        && strpos(visit(get_permalink(101)), 'AgentA') !== false, 'Recovery after both snapshots expire rebuilds error HTML even for the same list.');
 
     reset_state();
     $api_error = true;
-    verify(is_wp_error(tumtook_agents_fetch_data()), 'An initial API outage returns a real error.');
+    verify(is_wp_error(tumtook_agents_fetch_data()), 'A cold request returns a placeholder while the background job is pending.');
     for ($i = 0; $i < 20; ++$i) { tumtook_agents_shortcode(); }
-    verify($api_calls === 1, 'An initial outage is throttled instead of making one API call per visitor.');
+    verify($api_calls === 0 && $wpdb->scans === 0
+        && \FlyingPress\Purge::$calls === array(), 'Cold frontend requests never call the API, scan pages, or purge caches.');
+    poll();
+    for ($i = 0; $i < 20; ++$i) { tumtook_agents_shortcode(); }
+    verify($api_calls === 1, 'Visitors do not retry the API after a failed background poll.');
     api_items(array(agent('Recovered')));
     poll();
     verify(rendered_contains('Recovered'), 'The next background poll recovers without waiting for a visitor.');
@@ -368,13 +386,22 @@ namespace {
     reset_state();
     do_action('init');
     poll();
-    $preloads = count(\FlyingPress\Preload::$calls);
+    $before = $transients;
+    $calls = $api_calls;
+    $scans = $wpdb->scans;
+    $purges = \FlyingPress\Purge::$calls;
+    $cron = get_option('cron');
+    \FlyingPress\Purge::$fail = true;
     tumtook_agents_clear_cache();
-    verify(get_transient(TUMTOOK_AGENTS_CACHE_KEY) === false
-        && get_transient(TUMTOOK_AGENTS_STALE_CACHE_KEY) === false
-        && count(\FlyingPress\Preload::$calls) === $preloads, 'Manual clearing removes both snapshots without preloading empty caches.');
+    verify($transients === $before && $api_calls === $calls && $wpdb->scans === $scans
+        && \FlyingPress\Purge::$calls === $purges, 'The admin refresh button keeps snapshots and performs no API, discovery, or FlyingPress work.');
+    for ($i = 0; $i < 10; ++$i) { tumtook_agents_clear_cache(); }
+    verify(get_option('cron') === $cron, 'Repeated refresh clicks reuse the existing job instead of spawning more workers.');
+    verify(rendered_contains('AgentA') && $api_calls === $calls, 'Pages remain readable after a refresh click even if FlyingPress would fail.');
+    \FlyingPress\Purge::$fail = false;
     poll();
-    verify(rendered_contains('AgentA') && count(\FlyingPress\Preload::$calls) === $preloads + 1, 'The poll after manual clearing repopulates and preloads even unchanged data.');
+    verify(rendered_contains('AgentA') && count(\FlyingPress\Purge::$calls) === count($purges) + 1
+        && \FlyingPress\Preload::$calls === array(), 'The background poll performs the requested purge after storing data, without extra preload.');
     tumtook_agents_deactivate();
     verify(wp_next_scheduled(TUMTOOK_AGENTS_CRON_HOOK) === false
         && get_option(TUMTOOK_AGENTS_LOCK_KEY) === false, 'Deactivation removes scheduled polling and locks.');

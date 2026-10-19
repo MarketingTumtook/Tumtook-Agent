@@ -163,6 +163,45 @@
     margin: 0;
 }
 
+.tumtook-agent-line-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    margin-top: 0.75rem;
+    padding: 0.55rem 1rem;
+    border-radius: 999px;
+    background: #06c755;
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1;
+    text-decoration: none;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.tumtook-agent-line-link:hover,
+.tumtook-agent-line-link:focus-visible {
+    background: #05a847;
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+.tumtook-agent-line-link:focus-visible {
+    outline: 3px solid rgba(6, 199, 85, 0.3);
+    outline-offset: 2px;
+}
+
+/* The global purchase CTA is rendered by the footer. Keep it in normal flow
+   on the Contact page so it cannot cover agent details on small screens. */
+body.page-id-74 #lineBtnWrap {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    width: fit-content;
+    margin: 1rem auto;
+}
+
 /* Error */
 .tumtook-agents-error {
     text-align: center;
@@ -194,6 +233,14 @@
 }
 
 @media (max-width: 540px) {
+    .tumtook-agents-wrapper {
+        margin: 1rem auto;
+    }
+
+    .tumtook-agents-header {
+        margin-bottom: 1.25rem;
+    }
+
     .tumtook-agents-grid {
         grid-template-columns: repeat(2, 1fr);
         gap: 0.75rem;
@@ -213,5 +260,12 @@
 
     .tumtook-agent-info {
         padding: 0.6rem 0.5rem 0.8rem;
+    }
+
+    .tumtook-agent-line-link {
+        min-height: 36px;
+        margin-top: 0.5rem;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.75rem;
     }
 }

@@ -96,13 +96,12 @@ function tumtook_agents_get_page_urls() {
 }
 
 /**
- * Purge only affected HTML and optionally queue fresh pages for preloading.
+ * Purge only affected HTML from the background worker.
  * New agent data must already be stored before this runs.
  *
- * @param bool $preload Whether a fresh snapshot is ready for preloading.
  * @return bool Whether invalidation completed without an integration error.
  */
-function tumtook_agents_purge_page_cache($preload = true) {
+function tumtook_agents_purge_page_cache() {
     if (!class_exists('FlyingPress\\Purge')) {
         return true;
     }
@@ -115,9 +114,6 @@ function tumtook_agents_purge_page_cache($preload = true) {
         if ($urls) {
             if (\FlyingPress\Purge::purge_urls($urls) === false) {
                 return false;
-            }
-            if ($preload && is_callable(array('FlyingPress\\Preload', 'preload_urls'))) {
-                \FlyingPress\Preload::preload_urls($urls);
             }
         }
     } catch (\Throwable $error) {
@@ -170,7 +166,7 @@ function tumtook_agents_refresh_data() {
         tumtook_agents_release_refresh_lock($lock);
     }
     // add_option uses a unique option name to avoid concurrent API requests.
-    if (!add_option(TUMTOOK_AGENTS_LOCK_KEY, $now + 30, '', false)) {
+    if (!add_option(TUMTOOK_AGENTS_LOCK_KEY, $now + 5 * MINUTE_IN_SECONDS, '', false)) {
         return new WP_Error('tumtook_agents_refresh_busy', 'An agents refresh is already running.');
     }
 
@@ -206,18 +202,19 @@ function tumtook_agents_refresh_data() {
         }
         return $data;
     } finally {
-        tumtook_agents_release_refresh_lock($now + 30);
+        tumtook_agents_release_refresh_lock($now + 5 * MINUTE_IN_SECONDS);
     }
 }
 add_action(TUMTOOK_AGENTS_CRON_HOOK, 'tumtook_agents_refresh_data');
 
-/** Manual clearing also invalidates any error/old HTML created before refill. */
+/**
+ * Queue a refresh for the next scheduled worker. Keep the last good snapshot.
+ * Never scan pages, call the API, or invoke FlyingPress in the admin request.
+ * The historical function name is retained for callers of earlier versions.
+ */
 function tumtook_agents_clear_cache() {
-    delete_transient(TUMTOOK_AGENTS_CACHE_KEY);
-    delete_transient(TUMTOOK_AGENTS_STALE_CACHE_KEY);
+    tumtook_agents_ensure_refresh_schedule();
     $state = get_option(TUMTOOK_AGENTS_STATE_KEY, array());
-    $state['last_attempt'] = 0;
     $state['purge_pending'] = true;
     update_option(TUMTOOK_AGENTS_STATE_KEY, $state, false);
-    tumtook_agents_purge_page_cache(false);
 }

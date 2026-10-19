@@ -3,7 +3,7 @@
  * Plugin Name: Tumtook Agents
  * Plugin URI: https://chatbotline.tumtook.com
  * Description: ดึงข้อมูลรายชื่อ Agents จาก Tumtook API มาแสดงผลผ่าน Shortcode [tumtook_agents]
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: Tumtook
  * Text Domain: tumtook-agents
  */
@@ -19,7 +19,7 @@ define('TUMTOOK_AGENTS_STALE_CACHE_KEY', TUMTOOK_AGENTS_CACHE_KEY . '_stale');
 define('TUMTOOK_AGENTS_CACHE_TTL', 30 * MINUTE_IN_SECONDS);
 define('TUMTOOK_AGENTS_STALE_CACHE_TTL', 12 * HOUR_IN_SECONDS);
 define('TUMTOOK_AGENTS_REQUEST_TIMEOUT', 5);
-define('TUMTOOK_AGENTS_VERSION', '1.1.0');
+define('TUMTOOK_AGENTS_VERSION', '1.2.0');
 define('TUMTOOK_AGENTS_REFRESH_INTERVAL', MINUTE_IN_SECONDS);
 define('TUMTOOK_AGENTS_CRON_HOOK', 'tumtook_agents_refresh_event');
 define('TUMTOOK_AGENTS_STATE_KEY', TUMTOOK_AGENTS_CACHE_KEY . '_state');
@@ -169,7 +169,7 @@ function tumtook_agents_render_admin_page() {
 
         <?php if ($cache_cleared) : ?>
             <div class="notice notice-success is-dismissible">
-                <p>ลบ cache ของ Tumtook Agents เรียบร้อยแล้ว</p>
+                <p>รับคำขออัปเดตแล้ว ระบบจะดึงข้อมูลและอัปเดตแคชในรอบงานเบื้องหลังถัดไป ไม่ต้องกดซ้ำ</p>
             </div>
         <?php endif; ?>
 
@@ -192,11 +192,11 @@ function tumtook_agents_render_admin_page() {
         </div>
         <div class="card" style="max-width: 720px;">
             <h2>Cache Tools</h2>
-            <p>ใช้ปุ่มนี้เพื่อล้าง cache ข้อมูล agents ที่ปลั๊กอินเก็บไว้ แล้วให้ request ถัดไปดึงข้อมูลใหม่จาก API</p>
+            <p>ระบบอัปเดตอัตโนมัติ ไม่ต้องกดปุ่มเป็นประจำ ปุ่มนี้ใช้ขออัปเดตข้อมูลและแคชในรอบงานเบื้องหลังถัดไป โดยยังเก็บข้อมูลล่าสุดไว้ระหว่างรอ</p>
             <form method="post">
                 <?php wp_nonce_field('tumtook_agents_clear_cache_action'); ?>
                 <input type="hidden" name="tumtook_agents_clear_cache" value="1" />
-                <?php submit_button('Clear Cache', 'primary', 'submit', false); ?>
+                <?php submit_button('ขออัปเดตข้อมูล', 'primary', 'submit', false); ?>
             </form>
         </div>
     </div>
@@ -293,15 +293,10 @@ function tumtook_agents_fetch_data() {
         return $stale;
     }
 
-    // Only the first load without any snapshot needs to wait for the API.
-    // Rate-limit failures so an outage cannot trigger one API call per visitor.
-    $state = get_option(TUMTOOK_AGENTS_STATE_KEY, array());
-    if (!empty($state['last_attempt'])
-        && time() - $state['last_attempt'] < TUMTOOK_AGENTS_REFRESH_INTERVAL) {
-        return new WP_Error('tumtook_agents_retry_later', 'The agents data is temporarily unavailable.');
-    }
-
-    return tumtook_agents_refresh_data();
+    // Even a cold page must not run HTTP requests or FlyingPress operations.
+    // The scheduled worker fills the snapshot and invalidates this placeholder.
+    tumtook_agents_ensure_refresh_schedule();
+    return new WP_Error('tumtook_agents_retry_later', 'The agents data is temporarily unavailable.');
 }
 
 /**
@@ -376,6 +371,7 @@ function tumtook_agents_render_card($agent, $index) {
 
     $name = tumtook_agents_get_display_name($agent);
     $line_id = isset($agent['lineId']) ? (string) $agent['lineId'] : '';
+    $line_url = tumtook_agents_get_line_url($agent);
     $img_url = tumtook_agents_get_image_url($agent);
     $qr_url = tumtook_agents_get_qr_url($agent);
     ?>
@@ -383,7 +379,7 @@ function tumtook_agents_render_card($agent, $index) {
         <div class="tumtook-agent-photo">
             <?php if ($img_url) : ?>
                 <div class="tumtook-flip-front">
-                    <img src="<?php echo esc_url($img_url); ?>" alt="<?php echo esc_attr($name); ?>" loading="lazy" />
+                    <img src="<?php echo esc_url($img_url); ?>" alt="<?php echo esc_attr($name); ?>" loading="lazy" decoding="async" />
                 </div>
             <?php else : ?>
                 <div class="tumtook-flip-front tumtook-agent-placeholder">
@@ -393,7 +389,7 @@ function tumtook_agents_render_card($agent, $index) {
 
             <?php if ($qr_url) : ?>
                 <div class="tumtook-flip-back">
-                    <img src="<?php echo esc_url($qr_url); ?>" alt="QR <?php echo esc_attr($line_id); ?>" loading="lazy" />
+                    <img src="<?php echo esc_url($qr_url); ?>" alt="QR <?php echo esc_attr($line_id); ?>" loading="lazy" decoding="async" />
                 </div>
             <?php endif; ?>
         </div>
@@ -402,6 +398,15 @@ function tumtook_agents_render_card($agent, $index) {
             <h3 class="tumtook-agent-name"><?php echo esc_html($name); ?></h3>
             <?php if ($line_id !== '') : ?>
                 <p class="tumtook-agent-lineid">Line ID : <?php echo esc_html($line_id); ?></p>
+            <?php endif; ?>
+            <?php if ($line_url !== '') : ?>
+                <a
+                    class="tumtook-agent-line-link"
+                    href="<?php echo esc_url($line_url); ?>"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="แชต LINE กับ <?php echo esc_attr($name); ?>"
+                >แชต LINE</a>
             <?php endif; ?>
         </div>
     </div>
@@ -453,7 +458,8 @@ add_shortcode('tumtook_agents', 'tumtook_agents_shortcode');
  */
 function tumtook_agents_deactivate() {
     wp_clear_scheduled_hook(TUMTOOK_AGENTS_CRON_HOOK);
-    tumtook_agents_clear_cache();
+    delete_transient(TUMTOOK_AGENTS_CACHE_KEY);
+    delete_transient(TUMTOOK_AGENTS_STALE_CACHE_KEY);
     delete_option(TUMTOOK_AGENTS_LOCK_KEY);
     delete_option(TUMTOOK_AGENTS_STATE_KEY);
     delete_option('tumtook_agents_version');
