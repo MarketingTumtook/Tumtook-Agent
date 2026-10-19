@@ -406,6 +406,7 @@ function tumtook_agents_render_card($agent, $index) {
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="แชต LINE กับ <?php echo esc_attr($name); ?>"
+                    style="color:#fff!important;text-decoration:none!important;"
                 >แชต LINE</a>
             <?php endif; ?>
         </div>

@@ -172,10 +172,10 @@
     min-height: 42px;
     margin-top: 0.75rem;
     padding: 0 1.3rem;
-    border-radius: 999px;
+    border-radius: 8px;
 
-    background: linear-gradient(160deg, #06c755 0%, #04b34a 100%);
-    box-shadow: 0 2px 8px rgba(6, 199, 85, 0.30);
+    background: linear-gradient(180deg, #06c755 0%, #04b34a 100%);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
     border: none;
     outline: none;
 
@@ -233,10 +233,10 @@
 /* ── Hover state ── */
 .tumtook-agent-line-link:hover,
 .tumtook-agent-line-link:focus-visible {
-    background: linear-gradient(160deg, #07dc5e 0%, #06c755 100%);
-    box-shadow: 0 4px 14px rgba(6, 199, 85, 0.40);
+    background: linear-gradient(180deg, #07dc5e 0%, #06c755 100%);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     color: #ffffff !important;
-    transform: translateY(-2px) scale(1.02);
+    transform: translateY(-1px);
 }
 
 /* ── Press / active ── */
